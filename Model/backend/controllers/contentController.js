@@ -14,7 +14,11 @@ exports.getProblems = async (req, res) => {
         const rawCategory = req.params.category || req.query.category;
         const category = rawCategory ? rawCategory.toLowerCase() : null;
 
-        console.log("Category received:", rawCategory, "-> Processed to:", category);
+        console.log("=== GET PROBLEMS ===");
+        console.log("Raw category:", rawCategory);
+        console.log("Processed category:", category);
+        console.log("Request params:", req.params);
+        console.log("Request query:", req.query);
 
         let query = 'SELECT slug, title, category, difficulty, description FROM questions WHERE is_active = 1';
         const params = [];
@@ -22,10 +26,17 @@ exports.getProblems = async (req, res) => {
             query += ' AND category = ?';
             params.push(category);
         }
+        
+        console.log("SQL Query:", query);
+        console.log("SQL Params:", params);
+        
         const [rows] = await pool.query(query, params);
+        console.log("Results count:", rows.length);
+        console.log("Results:", rows);
+        
         res.json({ problems: rows });
     } catch (err) {
-        console.error(err);
+        console.error("Error in getProblems:", err);
         res.status(500).json({ message: 'Server error' });
     }
 };

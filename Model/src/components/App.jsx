@@ -10,6 +10,7 @@ import DashboardPage from "./DashboardPage";
 import CategoryPage from "./CategoryPage";
 import ExplorePage from "./ExplorePage";
 import AdminApp from "./admin/AdminApp";
+import LeetCodeProblem from "./LeetCodeProblem";
 import useLeaderboard, { LeaderboardProvider } from "../hooks/useLeaderboard";
 import { ThemeProvider } from "../hooks/useTheme";
 
@@ -41,6 +42,7 @@ function AppShell() {
           <Route path="/explore" element={<ExplorePage />} />
           <Route path="/explore/:topic" element={<CategoryPage />} />
           <Route path="/problem/:id" element={<AlgoDashboard />} />
+          <Route path="/leetcode/:slug" element={<LeetCodeProblem />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />

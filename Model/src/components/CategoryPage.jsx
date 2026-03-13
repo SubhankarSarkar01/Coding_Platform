@@ -10,7 +10,7 @@ const DIFFICULTY_COLORS = {
 };
 
 export default function CategoryPage() {
-    const { id: categorySlug } = useParams();
+    const { topic: categorySlug } = useParams();
     const navigate = useNavigate();
     const [filter, setFilter] = useState("All");
     const [problems, setProblems] = useState([]);

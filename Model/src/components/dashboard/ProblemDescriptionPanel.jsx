@@ -10,12 +10,16 @@ export default function ProblemDescriptionPanel({ active, frameIndex = 0 }) {
         <div className="flex h-full flex-col gap-4 overflow-y-auto p-4 scroll">
             {/* Title & Difficulty */}
             <div>
-                <h2 className="text-2xl font-bold text-text-main mb-2">{active.name}</h2>
+                <h2 className="text-2xl font-bold text-text-main mb-2">{active.title}</h2>
                 <div className="flex items-center gap-3 text-xs mb-4">
-                    <span className="rounded-md bg-blue-500/10 border border-blue-500/20 px-2 py-1 font-semibold text-blue-500">
-                        {active.name.includes("Binary") ? "Medium" : "Easy"}
+                    <span className={`rounded-md border px-2 py-1 font-semibold ${
+                        active.difficulty === 'Easy' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                        active.difficulty === 'Medium' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                        'bg-rose-500/10 border-rose-500/20 text-rose-500'
+                    }`}>
+                        {active.difficulty || 'Medium'}
                     </span>
-                    <span className="text-text-muted font-medium">Data Structures</span>
+                    <span className="text-text-muted font-medium">{active.category}</span>
                 </div>
             </div>
 

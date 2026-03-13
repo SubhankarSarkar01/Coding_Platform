@@ -52,8 +52,14 @@ export default function AlgoDashboard() {
 
     setLoading(true);
     fetch(`http://localhost:5000/api/question/${id}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
       .then(data => {
+        console.log("Fetched problem data:", data);
         const p = data.problem;
         if (!p) throw new Error("Problem not found");
 
@@ -62,21 +68,24 @@ export default function AlgoDashboard() {
           ...p,
           input: p.input_json ? JSON.parse(p.input_json) : { array: [], target: 0, expected: null },
           frames: p.frames_json ? JSON.parse(p.frames_json) : [{ array: [], pointers: {}, message: "No visualization data available." }],
-          steps: p.steps_text ? p.steps_text.split('\n').filter(s => s.trim()) : [],
-          constraints: p.constraints_text ? p.constraints_text.split('\n').filter(s => s.trim()) : [],
-          code: p.starter_code || "// Let's get started!"
+          steps: p.algorithm_steps ? p.algorithm_steps.split('\n').filter(s => s.trim()) : [],
+          constraints: p.constraints ? p.constraints.split('\n').filter(s => s.trim()) : [],
+          code: p.starter_code || "// Let's get started!",
+          category_slug: p.category // Map category to category_slug for compatibility
         };
 
+        console.log("Parsed problem:", parsedProblem);
         setActive(parsedProblem);
         setCode(parsedProblem.code);
         setLogs([`> Loaded ${parsedProblem.title}`]);
         setLoading(false);
       })
       .catch(err => {
-        console.error(err);
+        console.error("Error loading problem:", err);
+        setLogs([`> Error: ${err.message}`]);
         setLoading(false);
       });
-  }, [id]);
+  }, [id, navigate]);
 
   useEffect(() => {
     setFrameIndex(0);
@@ -119,57 +128,160 @@ export default function AlgoDashboard() {
     return () => clearInterval(timerRef.current);
   }, [isPlaying, active?.frames?.length, speed]);
 
-  const runCode = () => {
+  const getRunnerCode = (lang, userCode, funcName) => {
+    if (lang === "python") {
+      return `${userCode}
+
+import json
+import sys
+
+if __name__ == '__main__':
+    input_data = sys.stdin.read().strip()
+    if input_data:
+        try:
+            data = json.loads(input_data)
+            arr = data.get('array', [])
+            target = data.get('target', None)
+            
+            # Determine function to call
+            funcParams = (arr, target)
+            if 'solve' in globals():
+                result = solve(*funcParams)
+            elif '${funcName}' in globals():
+                result = globals()['${funcName}'](*funcParams)
+            else:
+                raise Exception("Neither solve() nor ${funcName}() is defined.")
+                
+            print(json.dumps(result).replace(' ', ''))
+        except Exception as e:
+            print(f"Execution Error: {str(e)}", file=sys.stderr)
+`;
+    }
+    return userCode;
+  };
+
+  const saveSubmission = () => {
+    setLogs(prev => [...prev, "> Recording your solution..."]);
+    const token = localStorage.getItem("token");
+    fetch("http://localhost:5000/api/submissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        problem_slug: active.slug,
+        problem_title: active.title,
+        category_slug: active.category_slug,
+        status: "Solved"
+      })
+    }).then(res => res.json())
+      .then(data => setLogs(prev => [...prev, `> ${data.message || "Progress saved!"}`]))
+      .catch(e => setLogs(prev => [...prev, `> Error saving progress: ${e.message}`]));
+  };
+
+  const runCode = async () => {
     setIsTerminalOpen(true);
+    setFrameIndex(0);
+    setIsPlaying(false);
 
     if (language !== "javascript") {
       setLogs([
         `> [Execution Environment Initializing for ${language.toUpperCase()}]...`,
-        `> Connecting to remote sandbox container...`,
-        `> Waiting for allocation...`
+        `> Connecting to remote Judge0 container...`,
+        `> Waiting for allocation and execution...`
       ]);
+
+      if (language !== "python") {
+        setLogs(prev => [...prev, `> Sorry, only JavaScript and Python are fully supported right now.`]);
+        return;
+      }
+
+      try {
+        const stdinJson = JSON.stringify({ array: active.input.array, target: active.input.target });
+        const expectedStr = JSON.stringify(active.input.expected).replace(/\s/g, ''); // Ensure no spaces
+        const funcName = active.title.split(' ').map((w, i) => i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+        const wrappedCode = getRunnerCode(language, code, funcName);
+
+        const token = localStorage.getItem("token");
+        const res = await fetch("http://localhost:5000/api/code/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            code: wrappedCode,
+            language,
+            testCases: [{ input: stdinJson, expected: expectedStr }]
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`Execution server responded with status ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (data.message) {
+          setLogs(prev => [...prev, `> Error: ${data.message}`]);
+          return;
+        }
+
+        const runResult = data.results && data.results[0];
+        if (!runResult) {
+          setLogs(prev => [...prev, `> Execution failed to return a result.`]);
+          return;
+        }
+
+        if (runResult.error) {
+          setLogs(prev => [...prev, `> Runtime Error:\n${runResult.error}`]);
+          return;
+        }
+
+        const pass = runResult.passed;
+        setLogs(prev => [
+          ...prev,
+          `> Output: ${runResult.actual}`,
+          `> Expected: ${runResult.expected}`,
+          `> Status: ${pass ? "PASS" : "FAIL"}`
+        ]);
+
+        if (pass) {
+          saveSubmission();
+        }
+      } catch (err) {
+        setLogs(prev => [...prev, `> Network Error: ${err.message}`]);
+      }
       return;
     }
 
-    setFrameIndex(0);
+    // JS EXECUTOR
     setIsPlaying(true);
     setLogs([`> Executing ${active.title} [JavaScript Live]...`]);
 
     try {
+      // Determine the expected function name (e.g., "Binary Search" -> "binarySearch")
+      const funcName = active.title.split(' ').map((w, i) => i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
+      
       const runSolve = new Function(
         "arr",
         "target",
         `${code}
-if (typeof solve !== "function") {
-  throw new Error("Function solve(arr, target) is not defined.");
-}
-return solve(arr, target);`
+if (typeof solve === "function") {
+  return solve(arr, target);
+} else if (typeof ${funcName} === "function") {
+  return ${funcName}(arr, target);
+} else {
+  throw new Error("Function solve(arr, target) or ${funcName}(arr, target) is not defined.");
+}`
       );
       const output = runSolve([...active.input.array], active.input.target);
-      const pass = output === active.input.expected;
+      const pass = JSON.stringify(output) === JSON.stringify(active.input.expected);
 
       setLogs((prev) => [
         ...prev,
-        `> Output: ${String(output)}`,
-        `> Expected: ${active.input.expected}`,
+        `> Output: ${JSON.stringify(output)}`,
+        `> Expected: ${JSON.stringify(active.input.expected)}`,
         `> Status: ${pass ? "PASS" : "FAIL"}`,
       ]);
 
       if (pass) {
-        setLogs(prev => [...prev, "> Recording your solution..."]);
-        const token = localStorage.getItem("token");
-        fetch("http://localhost:5000/api/submissions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            problem_slug: active.slug,
-            problem_title: active.title,
-            category_slug: active.category_slug,
-            status: "Solved"
-          })
-        }).then(res => res.json())
-          .then(data => setLogs(prev => [...prev, `> ${data.message || "Progress saved!"}`]))
-          .catch(e => setLogs(prev => [...prev, `> Error saving progress: ${e.message}`]));
+        saveSubmission();
       }
     } catch (error) {
       setIsPlaying(false);

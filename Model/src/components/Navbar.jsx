@@ -9,12 +9,15 @@ export default function Navbar({ onSelectLeaderboard }) {
   const [isLeaderboardMenuOpen, setIsLeaderboardMenuOpen] = useState(false);
   const [isProblemDropdownOpen, setIsProblemDropdownOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [localProblem, setLocalProblem] = useState(null);
+  const [siblings, setSiblings] = useState([]);
   const menuRef = useRef(null);
   const problemMenuRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   const isWorkspace = location.pathname.startsWith("/problem");
+  const problemSlug = location.pathname.split("/")[2];
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -24,6 +27,29 @@ export default function Navbar({ onSelectLeaderboard }) {
       setUser(null);
     }
   }, [location.pathname]);
+
+  // Fetch problem data when in workspace
+  useEffect(() => {
+    if (!isWorkspace || !problemSlug) {
+      setLocalProblem(null);
+      setSiblings([]);
+      return;
+    }
+
+    fetch(`http://localhost:5000/api/question/${problemSlug}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.problem) {
+          setLocalProblem(data.problem);
+          // Fetch siblings
+          fetch(`http://localhost:5000/api/questions/${data.problem.category}`)
+            .then(r => r.json())
+            .then(d => setSiblings(d.problems || []))
+            .catch(err => console.error("Error fetching siblings:", err));
+        }
+      })
+      .catch(err => console.error("Error fetching problem:", err));
+  }, [isWorkspace, problemSlug]);
 
   useEffect(() => {
     const onMouseDown = (event) => {
@@ -52,112 +78,87 @@ export default function Navbar({ onSelectLeaderboard }) {
             <span className="hidden text-xs text-blue-300/80 sm:inline">DSA IDE</span>
           </button>
 
-          {isWorkspace && (() => {
-            const problemSlug = location.pathname.split("/")[2];
-            const [localProblem, setLocalProblem] = useState(null);
-            const [siblings, setSiblings] = useState([]);
+          {isWorkspace && localProblem && (
+            <div
+              style={{
+                fontSize: "16px",
+                fontWeight: 600,
+                color: "rgba(255,255,255,0.85)",
+                marginLeft: "16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px"
+              }}
+              className="hidden sm:flex"
+            >
+              <span className="text-white/40">|</span>
 
-            useEffect(() => {
-              if (!problemSlug) return;
-              fetch(`http://localhost:5000/api/question/${problemSlug}`)
-                .then(res => res.json())
-                .then(data => {
-                  if (data.problem) {
-                    setLocalProblem(data.problem);
-                    // Fetch siblings
-                    fetch(`http://localhost:5000/api/questions/${data.problem.category}`)
-                      .then(r => r.json())
-                      .then(d => setSiblings(d.problems || []));
-                  }
-                });
-            }, [problemSlug]);
+              {/* Dropdown Container */}
+              <div className="relative" ref={problemMenuRef}>
+                <button
+                  onClick={() => setIsProblemDropdownOpen((prev) => !prev)}
+                  className="flex items-center gap-1.5 transition-colors hover:text-white"
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 600,
+                    color: "#60A5FA",
+                  }}
+                >
+                  {localProblem.title}
+                  <ChevronDown size={14} className={`transition-transform duration-200 ${isProblemDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
 
-            if (!localProblem) return null;
-
-            const formatCat = localProblem.category.charAt(0).toUpperCase() + localProblem.category.slice(1).toLowerCase();
-
-            return (
-              <div
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 600,
-                  color: "rgba(255,255,255,0.85)",
-                  marginLeft: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px"
-                }}
-                className="hidden sm:flex"
-              >
-                <span className="text-white/40">|</span>
-
-                {/* Dropdown Container */}
-                <div className="relative" ref={problemMenuRef}>
-                  <button
-                    onClick={() => setIsProblemDropdownOpen((prev) => !prev)}
-                    className="flex items-center gap-1.5 transition-colors hover:text-white"
-                    style={{
-                      fontSize: "16px",
-                      fontWeight: 600,
-                      color: "#60A5FA",
-                    }}
-                  >
-                    {localProblem.title}
-                    <ChevronDown size={14} className={`transition-transform duration-200 ${isProblemDropdownOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  <AnimatePresence>
-                    {isProblemDropdownOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute top-full left-0 mt-2 w-56 custom-scrollbar z-[9999]"
-                        style={{
-                          background: "#020617",
-                          borderRadius: "10px",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                          padding: "6px",
-                          overflow: "hidden",
-                        }}
-                      >
-                        <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                          {siblings.map(sib => (
-                            <button
-                              key={sib.slug}
-                              onClick={() => {
-                                navigate(`/problem/${sib.slug}`);
-                                setIsProblemDropdownOpen(false);
-                              }}
-                              className="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-all duration-150"
-                              style={{
-                                color: problemSlug === sib.slug ? "#60a5fa" : "rgba(255,255,255,0.7)",
-                                background: problemSlug === sib.slug ? "rgba(96,165,250,0.12)" : "transparent",
-                              }}
-                              onMouseEnter={e => {
-                                e.currentTarget.style.background = "rgba(96,165,250,0.12)";
-                                e.currentTarget.style.color = "#60a5fa";
-                              }}
-                              onMouseLeave={e => {
-                                e.currentTarget.style.background = problemSlug === sib.slug ? "rgba(96,165,250,0.12)" : "transparent";
-                                e.currentTarget.style.color = problemSlug === sib.slug ? "#60a5fa" : "rgba(255,255,255,0.7)";
-                              }}
-                            >
-                              {sib.title}
-                            </button>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                <span className="text-white/40">/</span>
-                <span className="cursor-pointer hover:text-white transition-colors" onClick={() => navigate(`/explore/${localProblem.category}`)}>{formatCat}</span>
+                <AnimatePresence>
+                  {isProblemDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute top-full left-0 mt-2 w-56 custom-scrollbar z-[9999]"
+                      style={{
+                        background: "#020617",
+                        borderRadius: "10px",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        padding: "6px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                        {siblings.map(sib => (
+                          <button
+                            key={sib.slug}
+                            onClick={() => {
+                              navigate(`/problem/${sib.slug}`);
+                              setIsProblemDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-all duration-150"
+                            style={{
+                              color: problemSlug === sib.slug ? "#60a5fa" : "rgba(255,255,255,0.7)",
+                              background: problemSlug === sib.slug ? "rgba(96,165,250,0.12)" : "transparent",
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = "rgba(96,165,250,0.12)";
+                              e.currentTarget.style.color = "#60a5fa";
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = problemSlug === sib.slug ? "rgba(96,165,250,0.12)" : "transparent";
+                              e.currentTarget.style.color = problemSlug === sib.slug ? "#60a5fa" : "rgba(255,255,255,0.7)";
+                            }}
+                          >
+                            {sib.title}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-            );
-          })()}
+
+              <span className="text-white/40">/</span>
+              <span className="cursor-pointer hover:text-white transition-colors" onClick={() => navigate(`/explore/${localProblem.category}`)}>{localProblem.category.charAt(0).toUpperCase() + localProblem.category.slice(1).toLowerCase()}</span>
+            </div>
+          )}
         </div>
 
         <nav className="flex items-center gap-2 text-sm">
