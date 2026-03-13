@@ -20,6 +20,7 @@ app.use('/api', require('./routes/content'));
 app.use('/api/content', require('./routes/content'));
 app.use('/api/code', require('./routes/codeExecution'));
 app.use('/api/leetcode', require('./routes/leetcode'));
+app.use('/api/runner', require('./routes/codeRunner'));
 app.use('/api/problems', require('./routes/problems'));
 
 const PORT = process.env.PORT || 5000;

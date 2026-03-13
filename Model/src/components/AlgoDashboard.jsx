@@ -181,111 +181,72 @@ if __name__ == '__main__':
     setIsTerminalOpen(true);
     setFrameIndex(0);
     setIsPlaying(false);
+    setLogs([`> Executing ${active.title} [${language.toUpperCase()}]...`]);
 
-    if (language !== "javascript") {
-      setLogs([
-        `> [Execution Environment Initializing for ${language.toUpperCase()}]...`,
-        `> Connecting to remote Judge0 container...`,
-        `> Waiting for allocation and execution...`
-      ]);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("http://localhost:5000/api/runner/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          code,
+          language,
+          problemSlug: active.slug,
+        }),
+      });
 
-      if (language !== "python") {
-        setLogs(prev => [...prev, `> Sorry, only JavaScript and Python are fully supported right now.`]);
+      const data = await response.json();
+
+      if (data.status === 'error') {
+        setLogs(prev => [...prev, `> Error: ${data.message}`]);
+        setIsPlaying(false);
         return;
       }
 
-      try {
-        const stdinJson = JSON.stringify({ array: active.input.array, target: active.input.target });
-        const expectedStr = JSON.stringify(active.input.expected).replace(/\s/g, ''); // Ensure no spaces
-        const funcName = active.title.split(' ').map((w, i) => i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
-        const wrappedCode = getRunnerCode(language, code, funcName);
-
-        const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:5000/api/code/test", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            code: wrappedCode,
-            language,
-            testCases: [{ input: stdinJson, expected: expectedStr }]
-          })
-        });
-
-        if (!res.ok) {
-          throw new Error(`Execution server responded with status ${res.status}`);
-        }
-
-        const data = await res.json();
-
-        if (data.message) {
-          setLogs(prev => [...prev, `> Error: ${data.message}`]);
-          return;
-        }
-
-        const runResult = data.results && data.results[0];
-        if (!runResult) {
-          setLogs(prev => [...prev, `> Execution failed to return a result.`]);
-          return;
-        }
-
-        if (runResult.error) {
-          setLogs(prev => [...prev, `> Runtime Error:\n${runResult.error}`]);
-          return;
-        }
-
-        const pass = runResult.passed;
-        setLogs(prev => [
-          ...prev,
-          `> Output: ${runResult.actual}`,
-          `> Expected: ${runResult.expected}`,
-          `> Status: ${pass ? "PASS" : "FAIL"}`
-        ]);
-
-        if (pass) {
-          saveSubmission();
-        }
-      } catch (err) {
-        setLogs(prev => [...prev, `> Network Error: ${err.message}`]);
-      }
-      return;
-    }
-
-    // JS EXECUTOR
-    setIsPlaying(true);
-    setLogs([`> Executing ${active.title} [JavaScript Live]...`]);
-
-    try {
-      // Determine the expected function name (e.g., "Binary Search" -> "binarySearch")
-      const funcName = active.title.split(' ').map((w, i) => i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
-      
-      const runSolve = new Function(
-        "arr",
-        "target",
-        `${code}
-if (typeof solve === "function") {
-  return solve(arr, target);
-} else if (typeof ${funcName} === "function") {
-  return ${funcName}(arr, target);
-} else {
-  throw new Error("Function solve(arr, target) or ${funcName}(arr, target) is not defined.");
-}`
-      );
-      const output = runSolve([...active.input.array], active.input.target);
-      const pass = JSON.stringify(output) === JSON.stringify(active.input.expected);
-
-      setLogs((prev) => [
+      // Display test results
+      setLogs(prev => [
         ...prev,
-        `> Output: ${JSON.stringify(output)}`,
-        `> Expected: ${JSON.stringify(active.input.expected)}`,
-        `> Status: ${pass ? "PASS" : "FAIL"}`,
+        `> Function detected: ${data.functionName}()`,
+        `> Running ${data.totalTests} test cases...`,
+        `> `,
       ]);
 
-      if (pass) {
+      // Show each test result
+      data.results.forEach((result, idx) => {
+        const status = result.passed ? '✓ PASS' : '✗ FAIL';
+        
+        setLogs(prev => [
+          ...prev,
+          `> Test ${result.testNumber}: ${status}`,
+          `>   Input: ${JSON.stringify(result.input)}`,
+          `>   Expected: ${JSON.stringify(result.expected)}`,
+          `>   Your Output: ${JSON.stringify(result.actual)}`,
+          `>   Runtime: ${result.runtime_ms}ms`,
+          result.error ? `>   Error: ${result.error}` : '',
+          `> `,
+        ].filter(Boolean));
+      });
+
+      // Summary
+      setLogs(prev => [
+        ...prev,
+        `> ═══════════════════════════════════════`,
+        `> Test Results: ${data.passedTests}/${data.totalTests} Passed`,
+        data.allPassed ? `> Status: ✓ ALL TESTS PASSED!` : `> Status: ✗ Some tests failed`,
+        `> ═══════════════════════════════════════`,
+      ]);
+
+      // If all passed, save submission
+      if (data.allPassed) {
         saveSubmission();
       }
+
     } catch (error) {
       setIsPlaying(false);
-      setLogs((prev) => [...prev, `> Runtime Error: ${error.message}`]);
+      setLogs(prev => [...prev, `> Runtime Error: ${error.message}`]);
     }
   };
 
