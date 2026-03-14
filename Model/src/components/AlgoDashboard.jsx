@@ -170,7 +170,9 @@ if __name__ == '__main__':
         problem_slug: active.slug,
         problem_title: active.title,
         category_slug: active.category_slug,
-        status: "Solved"
+        status: "Solved",
+        code: code,  // Save the actual code
+        language: language  // Save the language used
       })
     }).then(res => res.json())
       .then(data => setLogs(prev => [...prev, `> ${data.message || "Progress saved!"}`]))

@@ -199,16 +199,27 @@ async function executePython(code, sessionId) {
   const filename = path.join(TEMP_DIR, `${sessionId}.py`);
   await fs.writeFile(filename, code);
 
+  // Try python first (Windows), then python3 (Linux/Mac)
+  const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+
   return new Promise((resolve, reject) => {
     exec(
-      `python3 "${filename}"`,
+      `${pythonCommand} "${filename}"`,
       { timeout: TIMEOUT_MS, maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
           if (error.killed) {
             reject(new Error('Time limit exceeded'));
           } else {
-            resolve({ output: '', error: stderr || error.message });
+            // Check if Python is not installed
+            if (error.message.includes('not found') || error.message.includes('not recognized')) {
+              resolve({ 
+                output: '', 
+                error: 'Python is not installed. Please install Python from python.org or use JavaScript instead.' 
+              });
+            } else {
+              resolve({ output: '', error: stderr || error.message });
+            }
           }
         } else {
           resolve({ output: stdout, error: stderr || null });

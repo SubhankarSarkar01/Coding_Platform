@@ -2,17 +2,17 @@ const pool = require('../config/db');
 
 // POST /api/submissions
 exports.createSubmission = async (req, res) => {
-    const { problem_slug, problem_title, category_slug, category, status } = req.body;
+    const { problem_slug, problem_title, category_slug, category, status, code, language } = req.body;
     const userId = req.user.id;
     const cat = category || category_slug;
 
     if (!problem_slug || !status) return res.status(400).json({ message: 'Missing required fields' });
 
     try {
-        // Record submission
+        // Record submission with code and language
         await pool.query(
-            'INSERT INTO submissions (user_id, problem_slug, problem_title, category, status) VALUES (?,?,?,?,?)',
-            [userId, problem_slug, problem_title, cat, status]
+            'INSERT INTO submissions (user_id, problem_slug, problem_title, category, status, code, language) VALUES (?,?,?,?,?,?,?)',
+            [userId, problem_slug, problem_title, cat, status, code || null, language || 'javascript']
         );
 
         // If solved, update user stats
